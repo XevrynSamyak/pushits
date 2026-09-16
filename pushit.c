@@ -9,6 +9,8 @@ pushit - build, then push your work to GitHub in one command.
   pushit --no-build          skip the build step
   pushit --no-run            don't run the program / show its output
   pushit --public            create the GitHub repo as public (default: private)
+  pushit --repo my-repo -m "msg"       push to a repo under your account
+  pushit --repo owner/repo -m "msg"    push to any existing repo, or create it if missing
 """
 
 import argparse
@@ -197,16 +199,39 @@ def commit(paths, message):
     log(f"committed: {message}", "ok")
 
 
-def ensure_remote(public):
-    """Create origin on GitHub if there is none. True if it also pushed."""
-    if "origin" in git("remote").stdout.split():
+def ensure_remote(public, repo_name=None):
+    """Point origin at a GitHub repo, creating it if missing.
+
+    With --repo, target that repo (creating it if it doesn't exist yet).
+    Names without an "owner/" part are assumed to belong to the logged-in user.
+    True if the repo was just created and already pushed.
+    """
+    if not repo_name:
+        if "origin" in git("remote").stdout.split():
+            return False
+        repo_name = ROOT.name.strip().replace(" ", "-")
+
+    if "/" not in repo_name:
+        if run("gh auth status").returncode:
+            die("not logged into GitHub - run  gh auth login  first, then retry")
+        owner = run("gh api user --jq .login").stdout.strip()
+        if not owner:
+            die("could not determine your GitHub username")
+        repo_name = f"{owner}/{repo_name}"
+
+    r = run(f"gh repo view {q(repo_name)} --json url --jq .url")
+    if r.returncode == 0:
+        url = r.stdout.strip()
+        if "origin" in git("remote").stdout.split():
+            git(f"remote set-url origin {q(url)}")
+        else:
+            git(f"remote add origin {q(url)}")
+        log(f"targeting existing repo {repo_name}", "ok")
         return False
-    if run("gh auth status").returncode:
-        die("not logged into GitHub - run  gh auth login  first, then retry")
-    name = ROOT.name.strip().replace(" ", "-")
+
     vis = "--public" if public else "--private"
-    log(f"creating GitHub repo '{name}' ({vis[2:]})")
-    r = run(f"gh repo create {q(name)} {vis} --source . --remote origin --push")
+    log(f"creating GitHub repo '{repo_name}' ({vis[2:]})")
+    r = run(f"gh repo create {q(repo_name)} {vis} --source . --remote origin --push")
     if r.returncode:
         die("could not create the repo on GitHub", r)
     log(f"pushed to {git('remote get-url origin').stdout.strip()}", "ok")
@@ -251,6 +276,7 @@ def main():
     ap.add_argument("--no-build", action="store_true", help="skip the build step")
     ap.add_argument("--no-run", action="store_true", help="skip running the program (10s timeout)")
     ap.add_argument("--public", action="store_true", help="create repo as public (default: private)")
+    ap.add_argument("-r", "--repo", help="push to this GitHub repo (owner/repo, or a name under your account)")
     ap.add_argument("--selftest", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
 
@@ -282,7 +308,7 @@ def main():
         paths.append(ROOT / ".gitignore")
 
     commit(paths, args.flag_message or args.message)
-    if not ensure_remote(args.public):
+    if not ensure_remote(args.public, args.repo):
         push(branch)
     print("Done.")
 

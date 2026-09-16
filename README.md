@@ -28,9 +28,9 @@ gh auth login
 gh auth setup-git
 
 # 3. Install pushit
-git clone https://github.com/XevrynSamyak/pushit /tmp/pushit-install
+git clone https://github.com/XevrynSamyak/pushits /tmp/pushit-install
 mkdir -p ~/.local/bin
-cp /tmp/pushit-install/pushit ~/.local/bin/pushit
+cp /tmp/pushit-install/pushit.c ~/.local/bin/pushit
 chmod +x ~/.local/bin/pushit
 Usage
 pushit "my commit message"     # push the file you most recently changed
@@ -39,15 +39,17 @@ pushit --all -m "msg"          # push every changed file at once
 pushit --no-build              # skip compile
 pushit --no-run                # don't run the program / show its output
 pushit --public                # create the GitHub repo as public (default: private)
+pushit --repo my-repo -m "msg"          # push to a repo under your account
+pushit --repo owner/repo -m "msg"       # push to any existing repo, or create it if missing
 Run it inside a folder and pushit will:
 
 Pick the file you last edited (or use -f to choose one).
 Build it — C files compile in isolation, Python files get a syntax check. If it fails, nothing is pushed.
 Commit only that file.
-Create a private GitHub repo named after the folder the first time, then push to it every time after.
+Create a private GitHub repo named after the folder the first time, then push to it every time after. Use --repo to push to or create a different repo.
 For a "100 Days of Code" setup:
 
 mkdir my-codes && cd my-codes     # open this folder in VS Code
 pushit "day 1 done"               # writes your Day file + your message
 How it works
-A single ~290-line Python script — no dependencies. It calls git and gh under the hood. View the source in pushit.
+A single ~290-line Python script — no dependencies. It calls git and gh under the hood. View the source in pushit.c.
