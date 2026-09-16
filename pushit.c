@@ -11,6 +11,9 @@ pushit - build, then push your work to GitHub in one command.
   pushit --public            create the GitHub repo as public (default: private)
   pushit --repo my-repo -m "msg"       push to a repo under your account
   pushit --repo owner/repo -m "msg"    push to any existing repo, or create it if missing
+  pushit -r my-repo -f day3.c "msg"    tell it BOTH the code file and the repo
+
+If you leave out the repo or the code file, pushit asks you for it.
 """
 
 import argparse
@@ -62,8 +65,17 @@ def die(msg, r=None):
     sys.exit(f"[!] {msg}")
 
 
+def ask(prompt, default=""):
+    """Ask the user; empty input (or no TTY) falls back to `default`."""
+    try:
+        ans = input(prompt).strip()
+    except (EOFError, OSError):
+        return default
+    return ans or default
+
+
 def run(cmd):
-    return subprocess.run(cmd, shell=True, text=True, capture_output=True, cwd=ROOT)
+    return subprocess.run(cmd, shell=True, text=True, capture_output=True, cwd=ROOT, errors="replace")
 
 
 def git(args):
@@ -174,7 +186,7 @@ def show_output(fp, timeout=10):
         return
     try:
         r = subprocess.run(cmd, shell=True, text=True, capture_output=True,
-                           stdin=subprocess.DEVNULL, timeout=timeout, cwd=ROOT)
+                           stdin=subprocess.DEVNULL, timeout=timeout, cwd=ROOT, errors="replace")
     except subprocess.TimeoutExpired:
         log(f"{label} ran longer than {timeout}s - output skipped (--no-run to suppress)", "!")
         return
@@ -189,7 +201,7 @@ def commit(paths, message):
     paths = list(dict.fromkeys(str(p) for p in paths))
     git("add -- " + " ".join(q(p) for p in paths))
     if not message:
-        message = input("Commit message (or press Enter for auto): ").strip()
+        message = ask("Commit message (or press Enter for auto): ")
     message = message or f"auto-commit: {len(paths)} file(s)"
     r = git(f"commit -m {q(message)}")
     if r.returncode:
@@ -292,6 +304,17 @@ def main():
     branch = ensure_git()
     touched = ignore()
 
+    # Repo: explicit --repo, else ask when we'd otherwise create a folder-named one.
+    repo = args.repo
+    if repo is None and "origin" not in git("remote").stdout.split():
+        repo = ask(f"GitHub repo to push to (owner/name, Enter = {ROOT.name}): ") or None
+
+    # Code: explicit -f, else ask when a repo was chosen.
+    if not args.all and args.file is None and args.repo is not None:
+        chosen = ask("Code file to push (Enter = most recently changed): ")
+        if chosen:
+            args.file = chosen
+
     if args.all:
         paths = [ROOT / p for p in changed_files()]
     else:
@@ -308,7 +331,7 @@ def main():
         paths.append(ROOT / ".gitignore")
 
     commit(paths, args.flag_message or args.message)
-    if not ensure_remote(args.public, args.repo):
+    if not ensure_remote(args.public, repo):
         push(branch)
     print("Done.")
 
